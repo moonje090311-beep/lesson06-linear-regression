@@ -58,9 +58,53 @@ st.write(
     f"{LAST_YEAR}년 이후 데이터와 관측일이 {MIN_DAYS}일 미만인 해는 제외했습니다."
 )
 
-c4, c5 = st.columns(2)
-c4.metric("상관계수 (r)", f"{r:.3f}")
-c5.metric("기울기", f"{slope:+.4f} ℃/년")
+st.metric("상관계수 (r)", f"{r:.3f}")
+
+# 최근 20년 기울기 (끝 연도 기준 20년 구간)
+RECENT_YEARS = 20
+recent = yearly[yearly["연도"] > x.max() - RECENT_YEARS]
+if len(recent) >= 2:
+    slope_recent, intercept_recent = np.polyfit(
+        recent["연도"].to_numpy(), recent["연평균기온"].to_numpy(), 1
+    )
+else:
+    slope_recent = intercept_recent = None
+
+
+def big_card(title: str, sub: str, value: float | None) -> str:
+    text = "계산 불가" if value is None else f"{value * 100:+.2f} ℃"
+    return f"""
+    <div style="text-align:center; padding:1rem; border-radius:12px;
+                border:1px solid rgba(128,128,128,0.35); height:100%;">
+      <div style="font-size:1.05rem; font-weight:600;">{title}</div>
+      <div style="font-size:0.85rem; opacity:0.7; margin-bottom:0.3rem;">{sub}</div>
+      <div style="font-size:2.6rem; font-weight:700; line-height:1.2;">{text}</div>
+      <div style="font-size:0.85rem; opacity:0.7;">100년에 오르는 기온</div>
+    </div>
+    """
+
+
+st.subheader("100년에 몇 도 오를까?")
+a, b = st.columns(2)
+a.markdown(
+    big_card("전체 기간", f"{x.min()}~{x.max()}년 · {len(yearly)}개 해", slope),
+    unsafe_allow_html=True,
+)
+b.markdown(
+    big_card(
+        f"최근 {RECENT_YEARS}년",
+        f"{recent['연도'].min()}~{recent['연도'].max()}년 · {len(recent)}개 해",
+        slope_recent,
+    ),
+    unsafe_allow_html=True,
+)
+if slope_recent is not None and slope > 0 and slope_recent > 0:
+    st.write(
+        f"최근 {RECENT_YEARS}년의 상승 속도는 전체 기간의 약 "
+        f"**{slope_recent / slope:.1f}배**입니다. "
+        "(기울기 = 연간 변화량 × 100)"
+    )
+    st.caption("20년은 자료가 적고 해마다 들쭉날쭉해서, 기울기가 크게 흔들릴 수 있어요.")
 
 # 연도 슬라이더와 예측값
 year = st.slider("예상할 연도", min_value=1900, max_value=2100, value=2050, step=1)
@@ -93,6 +137,17 @@ fig.add_trace(
         name=f"회귀 직선 (r = {r:.3f})", line=dict(width=3, color="crimson"),
     )
 )
+if slope_recent is not None:
+    xr = recent["연도"].to_numpy()
+    fig.add_trace(
+        go.Scatter(
+            x=[xr.min(), xr.max()],
+            y=[slope_recent * xr.min() + intercept_recent,
+               slope_recent * xr.max() + intercept_recent],
+            mode="lines", name=f"최근 {RECENT_YEARS}년 직선",
+            line=dict(width=3, dash="dash", color="royalblue"),
+        )
+    )
 fig.add_trace(
     go.Scatter(
         x=[year], y=[pred], mode="markers", name=f"{year}년 예측",
